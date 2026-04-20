@@ -1,0 +1,15 @@
+{
+  "name": "xen-terminal-relayer",
+  "version": "1.0.0",
+  "description": "24/7 auto-claim bot for XEN Terminal",
+  "main": "relayer-v2.js",
+  "scripts": {
+    "start": "node relayer-v2.js",
+    "pm2": "pm2 start relayer-v2.js --name xen-relayer"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "ethers": "^6.9.0"
+  },
+  "license": "MIT"
+}

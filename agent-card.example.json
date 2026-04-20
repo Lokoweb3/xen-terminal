@@ -1,0 +1,64 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "XEN Mining Agent v1",
+  "description": "Autonomous on-chain agent that manages XEN token mining operations across proxy wallets on PulseChain. Executes time-sensitive claim + stake + restart cycles via scoped session-key delegation (ERC-4337 + EIP-7702). The agent holds no withdrawal authority — it can only perform the narrow set of operations authorized by the owner.",
+  "image": "https://raw.githubusercontent.com/Lokoweb3/xen-terminal/main/docs/screenshots/dashboard-preview.png",
+  "services": [
+    {
+      "name": "web",
+      "endpoint": "https://github.com/Lokoweb3/xen-terminal"
+    },
+    {
+      "name": "dashboard",
+      "endpoint": "http://localhost:3000"
+    },
+    {
+      "name": "source",
+      "endpoint": "https://github.com/Lokoweb3/xen-terminal",
+      "version": "1.0.0"
+    }
+  ],
+  "x402Support": false,
+  "active": true,
+  "registrations": [
+    {
+      "agentId": 1,
+      "agentRegistry": "eip155:369:0xE13c8700ab99b31D9BCC219FDC345f896Dc4a1ac"
+    }
+  ],
+  "supportedTrust": [
+    "reputation"
+  ],
+  "capabilities": {
+    "skills": [
+      "xen-claim-rank",
+      "xen-claim-mint-reward",
+      "xen-stake",
+      "xenft-batch-operations",
+      "automated-restart-cycle"
+    ],
+    "chains": ["eip155:369"],
+    "contracts": {
+      "manager": "0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4",
+      "xen": "0x8a7FDcA264e87b6da72D000f22186B4403081A2a",
+      "xenft_native": "0xfEa13BF27493f04DEac94f67a46441a68EfD32F8"
+    }
+  },
+  "security": {
+    "permissions": [
+      "Can call batchClaim() on the manager",
+      "Can call batchClaimStakeAndRestart() on the manager"
+    ],
+    "restrictions": [
+      "Cannot withdraw funds to arbitrary addresses",
+      "Cannot deploy new proxy wallets",
+      "Cannot modify stake percentage or term defaults",
+      "Cannot revoke owner access",
+      "Session key expires in 364 days, renewable by owner"
+    ]
+  },
+  "author": {
+    "handle": "Lokoweb3",
+    "github": "https://github.com/Lokoweb3"
+  }
+}

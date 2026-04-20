@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment (CRITICAL — never commit)
+.env
+.env.local
+.env.production
+*.env
+
+# Logs
+*.log
+relayer-*.log
+pm2/*
+
+# Build output
+dashboard/build/
+dashboard/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Compiled
+artifacts/
+cache/
+
+# Coverage
+coverage/
+
+# Personal notes
+notes.md
+TODO.md
+*.private.*
+
+# Backups
+*.bak
+*.backup

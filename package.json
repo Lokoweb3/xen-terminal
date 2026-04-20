@@ -1,0 +1,33 @@
+{
+  "name": "xen-terminal",
+  "version": "1.0.0",
+  "description": "Fully-automated XEN mining on PulseChain using modern Ethereum account abstraction (ERC-4337, EIP-3074, EIP-7702).",
+  "private": true,
+  "scripts": {
+    "deploy": "node scripts/deploy.js",
+    "setup": "node scripts/setup-v2.js",
+    "relayer": "cd relayer && pm2 start relayer-v2.js --name xen-relayer",
+    "dashboard": "cd dashboard && npm start"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "ethers": "^6.9.0",
+    "solc": "^0.8.20"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lokoweb3/xen-terminal"
+  },
+  "keywords": [
+    "ethereum",
+    "pulsechain",
+    "xen-crypto",
+    "account-abstraction",
+    "erc-4337",
+    "eip-3074",
+    "eip-7702",
+    "smart-contracts",
+    "defi"
+  ]
+}
