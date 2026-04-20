@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 580" width="100%" role="img" aria-labelledby="title desc">
+  <title id="title">XEN Terminal system architecture</title>
+  <desc id="desc">Owner wallet, relayer bot, and dashboard interact with XenMintManagerV2 which controls proxy wallets and XENFTs, with ERC-8004 trustless agent identity registries for agent discovery.</desc>
+
+  <style>
+    @media (prefers-color-scheme: dark) {
+      .bg-primary { fill: #050816; }
+      .t-primary { fill: #f3f4f6; }
+      .t-secondary { fill: #9ca3af; }
+      .purple-fill { fill: #a855f722; stroke: #a855f7; }
+      .purple-t { fill: #c4b5fd; }
+      .cyan-fill { fill: #06b6d422; stroke: #06b6d4; }
+      .cyan-t { fill: #67e8f9; }
+      .green-fill { fill: #10b98122; stroke: #10b981; }
+      .green-t { fill: #6ee7b7; }
+      .amber-fill { fill: #f59e0b22; stroke: #f59e0b; }
+      .amber-t { fill: #fcd34d; }
+      .pink-fill { fill: #ec489922; stroke: #ec4899; }
+      .pink-t { fill: #f9a8d4; }
+      .gray-fill { fill: #1f2937; stroke: #4b5563; }
+    }
+    @media (prefers-color-scheme: light) {
+      .bg-primary { fill: #ffffff; }
+      .t-primary { fill: #111827; }
+      .t-secondary { fill: #6b7280; }
+      .purple-fill { fill: #f3e8ff; stroke: #a855f7; }
+      .purple-t { fill: #6b21a8; }
+      .cyan-fill { fill: #cffafe; stroke: #06b6d4; }
+      .cyan-t { fill: #155e75; }
+      .green-fill { fill: #d1fae5; stroke: #10b981; }
+      .green-t { fill: #065f46; }
+      .amber-fill { fill: #fef3c7; stroke: #f59e0b; }
+      .amber-t { fill: #92400e; }
+      .pink-fill { fill: #fce7f3; stroke: #ec4899; }
+      .pink-t { fill: #9d174d; }
+      .gray-fill { fill: #f3f4f6; stroke: #9ca3af; }
+    }
+    .t { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; font-weight: 500; }
+    .ts { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect width="680" height="580" class="bg-primary"/>
+
+  <rect x="20" y="30" width="200" height="62" rx="8" class="purple-fill" stroke-width="1"/>
+  <text x="120" y="54" text-anchor="middle" dominant-baseline="central" class="t purple-t">Owner wallet</text>
+  <text x="120" y="74" text-anchor="middle" dominant-baseline="central" class="ts purple-t" opacity="0.75">Offline · hardware key</text>
+
+  <rect x="240" y="30" width="200" height="62" rx="8" class="cyan-fill" stroke-width="1"/>
+  <text x="340" y="54" text-anchor="middle" dominant-baseline="central" class="t cyan-t">React dashboard</text>
+  <text x="340" y="74" text-anchor="middle" dominant-baseline="central" class="ts cyan-t" opacity="0.75">Live blockchain data</text>
+
+  <rect x="460" y="30" width="200" height="62" rx="8" class="green-fill" stroke-width="1"/>
+  <text x="560" y="54" text-anchor="middle" dominant-baseline="central" class="t green-t">Relayer bot</text>
+  <text x="560" y="74" text-anchor="middle" dominant-baseline="central" class="ts green-t" opacity="0.75">Scoped 24/7 agent</text>
+
+  <line x1="120" y1="92" x2="120" y2="168" stroke="#a855f7" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow)"/>
+  <line x1="340" y1="92" x2="340" y2="168" stroke="#06b6d4" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow)"/>
+  <line x1="560" y1="92" x2="560" y2="168" stroke="#10b981" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow)"/>
+
+  <text x="340" y="130" text-anchor="middle" class="ts t-secondary">PulseChain · chain id 369</text>
+
+  <rect x="40" y="170" width="440" height="110" rx="8" class="cyan-fill" stroke-width="1"/>
+  <text x="260" y="196" text-anchor="middle" dominant-baseline="central" class="t cyan-t">XenMintManagerV2</text>
+  <text x="260" y="216" text-anchor="middle" dominant-baseline="central" class="ts cyan-t" opacity="0.75">Session keys · delegation · atomic batching</text>
+  <line x1="70" y1="234" x2="450" y2="234" stroke="#06b6d4" stroke-width="0.5" opacity="0.25"/>
+  <text x="80" y="254" class="ts cyan-t" opacity="0.75">ERC-4337 session keys</text>
+  <text x="80" y="270" class="ts cyan-t" opacity="0.75">EIP-3074 AUTHCALL</text>
+  <text x="280" y="254" class="ts cyan-t" opacity="0.75">EIP-7702 batching</text>
+  <text x="280" y="270" class="ts cyan-t" opacity="0.75">onlyOwnerOrRelayer</text>
+
+  <rect x="500" y="170" width="160" height="110" rx="8" class="purple-fill" stroke-width="1"/>
+  <text x="580" y="194" text-anchor="middle" dominant-baseline="central" class="t purple-t">ERC-8004</text>
+  <text x="580" y="212" text-anchor="middle" dominant-baseline="central" class="ts purple-t" opacity="0.75">Trustless agents</text>
+  <line x1="520" y1="228" x2="640" y2="228" stroke="#a855f7" stroke-width="0.5" opacity="0.25"/>
+  <text x="515" y="248" class="ts purple-t" opacity="0.75">Identity (ERC-721)</text>
+  <text x="515" y="262" class="ts purple-t" opacity="0.75">Reputation</text>
+  <text x="515" y="276" class="ts purple-t" opacity="0.75">Validation</text>
+
+  <line x1="480" y1="225" x2="500" y2="225" stroke="#a855f7" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <rect x="20" y="320" width="200" height="86" rx="8" class="amber-fill" stroke-width="1"/>
+  <text x="120" y="342" text-anchor="middle" dominant-baseline="central" class="t amber-t">Proxy wallets</text>
+  <text x="120" y="360" text-anchor="middle" dominant-baseline="central" class="ts amber-t" opacity="0.75">N × XenProxyV2 (CREATE2)</text>
+  <rect x="35" y="374" width="22" height="22" rx="3" fill="#f59e0b" opacity="0.3"/>
+  <rect x="62" y="374" width="22" height="22" rx="3" fill="#f59e0b" opacity="0.3"/>
+  <rect x="89" y="374" width="22" height="22" rx="3" fill="#f59e0b" opacity="0.3"/>
+  <text x="130" y="389" dominant-baseline="central" class="ts amber-t" opacity="0.75">...</text>
+  <rect x="155" y="374" width="22" height="22" rx="3" fill="#f59e0b" opacity="0.3"/>
+  <rect x="182" y="374" width="22" height="22" rx="3" fill="#f59e0b" opacity="0.3"/>
+
+  <rect x="240" y="320" width="200" height="86" rx="8" class="pink-fill" stroke-width="1"/>
+  <text x="340" y="342" text-anchor="middle" dominant-baseline="central" class="t pink-t">XENFTs (ERC-721)</text>
+  <text x="340" y="362" text-anchor="middle" dominant-baseline="central" class="ts pink-t" opacity="0.75">Batch VMU mining NFTs</text>
+  <text x="340" y="380" text-anchor="middle" dominant-baseline="central" class="ts pink-t" opacity="0.75">XENT (fork) · pXENT (native)</text>
+
+  <rect x="460" y="320" width="200" height="86" rx="8" class="green-fill" stroke-width="1"/>
+  <text x="560" y="342" text-anchor="middle" dominant-baseline="central" class="t green-t">XEN tokens (ERC-20)</text>
+  <text x="560" y="362" text-anchor="middle" dominant-baseline="central" class="ts green-t" opacity="0.75">Reward payout</text>
+  <text x="560" y="380" text-anchor="middle" dominant-baseline="central" class="ts green-t" opacity="0.75">XEN (fork) · pXEN (native)</text>
+
+  <line x1="200" y1="280" x2="120" y2="320" stroke="#06b6d4" stroke-width="1" marker-end="url(#arrow)"/>
+  <line x1="340" y1="280" x2="340" y2="320" stroke="#ec4899" stroke-width="1" marker-end="url(#arrow)"/>
+  <line x1="220" y1="363" x2="240" y2="363" stroke="#10b981" stroke-width="1" marker-end="url(#arrow)"/>
+  <line x1="440" y1="363" x2="460" y2="363" stroke="#10b981" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <rect x="500" y="440" width="160" height="62" rx="8" class="amber-fill" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="580" y="462" text-anchor="middle" dominant-baseline="central" class="t amber-t">agent-card.json</text>
+  <text x="580" y="482" text-anchor="middle" dominant-baseline="central" class="ts amber-t" opacity="0.75">GitHub · IPFS</text>
+
+  <line x1="580" y1="280" x2="580" y2="440" stroke="#f59e0b" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="495" y="370" text-anchor="end" class="ts t-secondary">tokenURI</text>
+
+  <rect x="20" y="440" width="460" height="110" rx="8" class="gray-fill" stroke-width="0.5"/>
+  <text x="36" y="462" dominant-baseline="central" class="t t-primary">Security model</text>
+
+  <circle cx="36" cy="484" r="4" fill="#a855f7"/>
+  <text x="48" y="484" dominant-baseline="central" class="ts t-secondary">Owner — full control, offline</text>
+
+  <circle cx="36" cy="502" r="4" fill="#06b6d4"/>
+  <text x="48" y="502" dominant-baseline="central" class="ts t-secondary">Manager — gates all actions</text>
+
+  <circle cx="36" cy="520" r="4" fill="#10b981"/>
+  <text x="48" y="520" dominant-baseline="central" class="ts t-secondary">Relayer — claim only, cannot withdraw</text>
+
+  <circle cx="260" cy="484" r="4" fill="#f59e0b"/>
+  <text x="272" y="484" dominant-baseline="central" class="ts t-secondary">Proxies — only callable by manager</text>
+
+  <circle cx="260" cy="502" r="4" fill="#ec4899"/>
+  <text x="272" y="502" dominant-baseline="central" class="ts t-secondary">XENFTs — public NFT contracts</text>
+
+  <circle cx="260" cy="520" r="4" fill="#a855f7"/>
+  <text x="272" y="520" dominant-baseline="central" class="ts t-secondary">Agent ID — public discoverability</text>
+</svg>

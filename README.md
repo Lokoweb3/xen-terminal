@@ -8,6 +8,14 @@ Built as a learning exercise and portfolio project. See [disclaimer](#disclaimer
 
 ---
 
+## Dashboard
+
+![Overview Dashboard](docs/screenshots/01-overview-tab.png)
+
+*Real-time P&L card with live PulseX pricing, token balances, proxy wallet counts, and full gas breakdown across all operation types.*
+
+---
+
 ## What it does
 
 1. **Deploys** a manager smart contract that can create hundreds of mini proxy wallets
@@ -21,32 +29,7 @@ Built as a learning exercise and portfolio project. See [disclaimer](#disclaimer
 
 ## Architecture
 
-```
-     YOUR WALLET (owner EOA)
-          │
-          │ deploys + authorizes
-          ▼
-   ┌──────────────────────────┐
-   │  XenMintManagerV2        │  ← smart contract on PulseChain
-   │  • Owns N proxy wallets  │
-   │  • Session keys (4337)   │
-   │  • Delegation (3074)     │
-   │  • Atomic ops (7702)     │
-   └──────────────────────────┘
-       │              ▲
-       │              │
-       ▼              │
-   ┌──────────┐   ┌───────────────┐
-   │ N Proxy  │   │ Relayer Bot   │
-   │ Wallets  │   │ (Node.js)     │
-   └──────────┘   └───────────────┘
-       │              │
-       │ claim + stake│
-       ▼              ▼
-   ┌──────────────────────────┐
-   │  XEN Crypto (ERC-20)     │
-   └──────────────────────────┘
-```
+![System Architecture](docs/architecture.svg)
 
 See [docs/architecture.md](docs/architecture.md) for the full breakdown.
 
@@ -54,7 +37,11 @@ See [docs/architecture.md](docs/architecture.md) for the full breakdown.
 
 **ERC-8004 (Trustless Agents)** — The relayer bot is registered as an on-chain ERC-8004 agent with verifiable identity, optional reputation tracking, and a validation hook for third-party verification. This makes the agent discoverable and trustable by other systems without prior relationships. See [docs/erc8004-integration.md](docs/erc8004-integration.md).
 
-For analysis of other 2026 proposals (ERC-8211 Smart Batching, ERC-8196 Agent Auth, ERC-8199 Sandboxed Wallet) and why they are/aren't integrated, see [docs/future-work.md](docs/future-work.md).
+![ERC-8004 Agent Identity](docs/screenshots/02-agent-tab.png)
+
+*The dashboard resolves live agent identity from the on-chain registry, displays registered permissions and restrictions, and verifies that the published `agent-card.json` metadata is reachable.*
+
+For analysis of other 2026 proposals (ERC-8211 Smart Batching, ERC-8126 Agent Verification, ERC-8199 Sandboxed Wallet) and why they are/aren't integrated, see [docs/future-work.md](docs/future-work.md).
 
 ## Tech stack
 
@@ -72,12 +59,40 @@ For analysis of other 2026 proposals (ERC-8211 Smart Batching, ERC-8196 Agent Au
 
 ```
 xen-terminal/
-├── contracts/          Solidity sources
+├── contracts/          Solidity sources (6 contracts)
 ├── scripts/            Deployment + setup scripts
 ├── relayer/            24/7 bot
 ├── dashboard/          React UI
-└── docs/               Deep-dive articles
+├── agent-card.example.json   ERC-8004 agent metadata
+└── docs/               Deep-dive articles + screenshots
 ```
+
+## Live operations
+
+The dashboard exposes full operational control over minting, claiming, and monitoring.
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### Minting
+
+![Mint pXENT Modal](docs/screenshots/03-mint-pxent-modal.png)
+
+*Mint modal with term slider (capped at the current protocol max), VMU selection, live gas estimates, and a summary showing projected maturity date.*
+
+</td>
+<td width="50%" valign="top">
+
+### Live Transaction Logs
+
+![Transaction Logs](docs/screenshots/04-tx-logs.png)
+
+*Every RPC call, block scan, event parse, and transaction is logged in real time with clickable hashes that open in PulseScan.*
+
+</td>
+</tr>
+</table>
 
 ## Quick start
 
@@ -101,11 +116,14 @@ node scripts/deploy.js
 # 5. Set up session key + delegation
 node scripts/setup-v2.js
 
-# 6. Start the relayer bot
+# 6. Deploy ERC-8004 registries + register agent (optional but recommended)
+node scripts/deploy-erc8004.js
+
+# 7. Start the relayer bot
 cd relayer
 pm2 start relayer-v2.js --name xen-relayer
 
-# 7. Start the dashboard
+# 8. Start the dashboard
 cd ../dashboard
 npm start
 # → http://localhost:3000
@@ -129,6 +147,14 @@ Pre-signs an authorization letting the relayer call the manager contract on beha
 
 Without EIP-7702 this would require 3N separate transactions.
 
+### Agent identity (ERC-8004)
+The relayer is registered as an ERC-721-based agent NFT with on-chain metadata (agent wallet, capabilities, services). Third parties can:
+- Verify the agent's identity on-chain
+- Post reputation feedback
+- Submit validation requests
+
+This makes the system discoverable and composable with the broader ERC-8004 agent ecosystem.
+
 See [docs/eips-explained.md](docs/eips-explained.md) for the full comparison.
 
 ## Dashboard features
@@ -140,6 +166,7 @@ See [docs/eips-explained.md](docs/eips-explained.md) for the full comparison.
 - "Claim All" batch operations
 - Multi-ecosystem support (OG XENT + native pXENT)
 - Detailed gas breakdown by operation type
+- ERC-8004 agent identity tab with live on-chain resolution
 
 ## Security model
 
@@ -171,4 +198,5 @@ MIT — see [LICENSE](LICENSE).
 
 - [XEN Crypto](https://xen.network/) — the base protocol being interacted with
 - [PulseChain](https://pulsechain.com/) — the blockchain this runs on
+- [ERC-8004 spec authors](https://eips.ethereum.org/EIPS/eip-8004) — MetaMask, Ethereum Foundation, Google, Coinbase
 - [Vitalik Buterin's EIP-7702](https://eips.ethereum.org/EIPS/eip-7702) — the delegation standard
