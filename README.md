@@ -200,3 +200,29 @@ MIT — see [LICENSE](LICENSE).
 - [PulseChain](https://pulsechain.com/) — the blockchain this runs on
 - [ERC-8004 spec authors](https://eips.ethereum.org/EIPS/eip-8004) — MetaMask, Ethereum Foundation, Google, Coinbase
 - [Vitalik Buterin's EIP-7702](https://eips.ethereum.org/EIPS/eip-7702) — the delegation standard
+
+## Deployed Contracts
+
+All contracts are verified on PulseScan.
+
+| Contract | Address |
+|---|---|
+| XenMintManagerV2 | [`0x8F3b672F...`](https://scan.pulsechain.com/address/0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4#code) ✅ |
+| IdentityRegistry (ERC-8004) | [`0xE13c8700...`](https://scan.pulsechain.com/address/0xE13c8700ab99b31D9BCC219FDC345f896Dc4a1ac#code) ✅ |
+| ReputationRegistry (ERC-8004) | [`0xc1fb4138...`](https://scan.pulsechain.com/address/0xc1fb41388AEf24c0793A03e9Dc1aC2dD92745BdF#code) ✅ |
+| ValidationRegistry (ERC-8004) | [`0xdaE9EC7E...`](https://scan.pulsechain.com/address/0xdaE9EC7E9Fb715047643e1cc9544CC052337203C#code) ✅ |
+
+See [docs/verification.md](docs/verification.md) for reproducing the verification.
+
+## Deployed Contracts
+
+All contracts are verified on PulseScan.
+
+| Contract | Address |
+|---|---|
+| XenMintManagerV2 | [`0x8F3b672F...`](https://scan.pulsechain.com/address/0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4#code) ✅ |
+| IdentityRegistry (ERC-8004) | [`0xE13c8700...`](https://scan.pulsechain.com/address/0xE13c8700ab99b31D9BCC219FDC345f896Dc4a1ac#code) ✅ |
+| ReputationRegistry (ERC-8004) | [`0xc1fb4138...`](https://scan.pulsechain.com/address/0xc1fb41388AEf24c0793A03e9Dc1aC2dD92745BdF#code) ✅ |
+| ValidationRegistry (ERC-8004) | [`0xdaE9EC7E...`](https://scan.pulsechain.com/address/0xdaE9EC7E9Fb715047643e1cc9544CC052337203C#code) ✅ |
+
+See [docs/verification.md](docs/verification.md) for reproducing the verification.
