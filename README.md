@@ -2,7 +2,7 @@
 
 **Fully-automated XEN mining on PulseChain using modern Ethereum account abstraction and the emerging agent identity standard.**
 
-This project demonstrates how to combine four Ethereum standards — [ERC-4337](https://eips.ethereum.org/EIPS/eip-4337), [EIP-3074](https://eips.ethereum.org/EIPS/eip-3074), [EIP-7702](https://eips.ethereum.org/EIPS/eip-7702), and [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) — to build a 24/7 autonomous blockchain agent with a verifiable on-chain identity. The agent manages dozens of proxy wallets, executes time-sensitive on-chain operations, cannot be tricked into stealing funds, and exposes its credentials for third-party reputation and validation.
+This project demonstrates how to combine six Ethereum standards — [ERC-4337](https://eips.ethereum.org/EIPS/eip-4337), [EIP-3074](https://eips.ethereum.org/EIPS/eip-3074), [EIP-7702](https://eips.ethereum.org/EIPS/eip-7702), [EIP-1167](https://eips.ethereum.org/EIPS/eip-1167), [EIP-5792](https://eips.ethereum.org/EIPS/eip-5792), and [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) — to build a 24/7 autonomous blockchain agent with a verifiable on-chain identity. The agent manages dozens of proxy wallets, executes time-sensitive on-chain operations, cannot be tricked into stealing funds, and exposes its credentials for third-party reputation and validation.
 
 Built as a learning exercise and portfolio project. See [disclaimer](#disclaimer).
 
@@ -47,9 +47,10 @@ For analysis of other 2026 proposals (ERC-8211 Smart Batching, ERC-8126 Agent Ve
 
 | Layer | Stack |
 |---|---|
-| Smart contracts | Solidity 0.8.20, `CREATE2` for proxy deployment |
+| Smart contracts | Solidity 0.8.20, EIP-1167 minimal proxies (V3) |
 | Blockchain | PulseChain (Ethereum fork with Pectra features) |
 | Account abstraction | ERC-4337 session keys, EIP-3074 AUTHCALL, EIP-7702 delegation |
+| Wallet UX | EIP-5792 `wallet_sendCalls` for one-popup batched mints (with fallback) |
 | Agent identity | ERC-8004 Trustless Agents (Identity + Reputation + Validation registries) |
 | Relayer bot | Node.js 22, ethers v6, PM2 for process management |
 | Dashboard | React 18, direct JSON-RPC (no web3 library dependency) |
@@ -147,6 +148,12 @@ Pre-signs an authorization letting the relayer call the manager contract on beha
 
 Without EIP-7702 this would require 3N separate transactions.
 
+### Minimal proxies (EIP-1167)
+V3 deploys a single `XenProxyV3` implementation in the manager's constructor, then creates 45-byte clones for each mint slot. Each clone forwards calls to the implementation via `DELEGATECALL`, so they share code but keep independent storage. This cuts per-proxy deploy gas by ~40–50% on the real on-chain path (V3 averages ~216k gas per proxy vs V2's ~370–450k for the same operation). See [`_cloneEIP1167`](contracts/XenMintManagerV3.sol) for the inline-assembly clone deploy.
+
+### Wallet batching (EIP-5792)
+The dashboard probes `wallet_getCapabilities` for the connected wallet and, if atomic batching is supported, submits all mint batches as a single `wallet_sendCalls` request — one MetaMask popup instead of N. Wallets without 5792 support fall back to the per-batch loop transparently. See [`handleStartMint`](dashboard/src/XenDashboard.jsx) for the probe + fallback path.
+
 ### Agent identity (ERC-8004)
 The relayer is registered as an ERC-721-based agent NFT with on-chain metadata (agent wallet, capabilities, services). Third parties can:
 - Verify the agent's identity on-chain
@@ -203,26 +210,13 @@ MIT — see [LICENSE](LICENSE).
 
 ## Deployed Contracts
 
-All contracts are verified on PulseScan.
-
-| Contract | Address |
-|---|---|
-| XenMintManagerV2 | [`0x8F3b672F...`](https://scan.pulsechain.com/address/0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4#code) ✅ |
-| IdentityRegistry (ERC-8004) | [`0xE13c8700...`](https://scan.pulsechain.com/address/0xE13c8700ab99b31D9BCC219FDC345f896Dc4a1ac#code) ✅ |
-| ReputationRegistry (ERC-8004) | [`0xc1fb4138...`](https://scan.pulsechain.com/address/0xc1fb41388AEf24c0793A03e9Dc1aC2dD92745BdF#code) ✅ |
-| ValidationRegistry (ERC-8004) | [`0xdaE9EC7E...`](https://scan.pulsechain.com/address/0xdaE9EC7E9Fb715047643e1cc9544CC052337203C#code) ✅ |
-
-See [docs/verification.md](docs/verification.md) for reproducing the verification.
-
-## Deployed Contracts
-
-All contracts are verified on PulseScan.
-
-| Contract | Address |
-|---|---|
-| XenMintManagerV2 | [`0x8F3b672F...`](https://scan.pulsechain.com/address/0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4#code) ✅ |
-| IdentityRegistry (ERC-8004) | [`0xE13c8700...`](https://scan.pulsechain.com/address/0xE13c8700ab99b31D9BCC219FDC345f896Dc4a1ac#code) ✅ |
-| ReputationRegistry (ERC-8004) | [`0xc1fb4138...`](https://scan.pulsechain.com/address/0xc1fb41388AEf24c0793A03e9Dc1aC2dD92745BdF#code) ✅ |
-| ValidationRegistry (ERC-8004) | [`0xdaE9EC7E...`](https://scan.pulsechain.com/address/0xdaE9EC7E9Fb715047643e1cc9544CC052337203C#code) ✅ |
+| Contract | Address | Notes |
+|---|---|---|
+| XenMintManagerV3 | [`0x80cBa50F...`](https://scan.pulsechain.com/address/0x80cBa50Fe0Efe7Fd98CbDe0a290A6651fAD0bDAF) | Active — EIP-1167 clones |
+| XenProxyV3 (implementation) | [`0x1E55318B...`](https://scan.pulsechain.com/address/0x1E55318B00aAFCA3149aCFB955d0679236cA7047) | Shared logic for V3 clones |
+| XenMintManagerV2 | [`0x8F3b672F...`](https://scan.pulsechain.com/address/0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4#code) ✅ | Legacy — full proxy deploys |
+| IdentityRegistry (ERC-8004) | [`0xE13c8700...`](https://scan.pulsechain.com/address/0xE13c8700ab99b31D9BCC219FDC345f896Dc4a1ac#code) ✅ | |
+| ReputationRegistry (ERC-8004) | [`0xc1fb4138...`](https://scan.pulsechain.com/address/0xc1fb41388AEf24c0793A03e9Dc1aC2dD92745BdF#code) ✅ | |
+| ValidationRegistry (ERC-8004) | [`0xdaE9EC7E...`](https://scan.pulsechain.com/address/0xdaE9EC7E9Fb715047643e1cc9544CC052337203C#code) ✅ | |
 
 See [docs/verification.md](docs/verification.md) for reproducing the verification.

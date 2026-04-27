@@ -170,6 +170,16 @@ async function claimXenfts(xenftAddr, label, forWallet) {
   const xenft = new ethers.Contract(xenftAddr, xenftAbi, forWallet);
 
   for (const nft of matured) {
+    // Pre-flight via eth_call — costs 0 gas. Skip if it would revert
+    // (already redeemed, not yet matured, ownership change, etc.) so
+    // we don't waste PLS on a guaranteed-revert tx.
+    try {
+      await xenft.bulkClaimMintReward.staticCall(nft.tokenId);
+    } catch (preflight) {
+      log(`   ⏭️  #${nft.tokenId} skipped — would revert (${preflight.shortMessage || preflight.reason || 'likely already claimed'})`);
+      continue;
+    }
+
     try {
       log(`   Claiming #${nft.tokenId} (${nft.vmus} VMUs)...`);
       const tx = await xenft.bulkClaimMintReward(nft.tokenId, { gasLimit: 8_000_000n });
