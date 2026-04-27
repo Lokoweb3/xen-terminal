@@ -21,9 +21,15 @@ const PROXY_BATCH   = 20; // load proxies in batches of 20
 
 // ── Known XenMintManager deployments ─────────────────────────
 // Listed in dashboard quick-switch UI. V3 is the active default.
+// Known XenMintManager deployments. Order matters — the first entry is
+// the default, the second/third are the quick-switch alternates.
+// V4 is the audited default. V3/V2 have a fund-locking bug (V-01) that
+// traps any harvested pXEN inside the contract — keep them listed for
+// historical access but DO NOT mint on them.
 const KNOWN_CONTRACTS = [
-  { label:"V3", version:"V3", address:"0x80cBa50Fe0Efe7Fd98CbDe0a290A6651fAD0bDAF", note:"EIP-1167 clones (active)" },
-  { label:"V2", version:"V2", address:"0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4", note:"Legacy full proxies" },
+  { label:"V4", version:"V4", address:"0x8BfFebfFf72b6F45D7eAa79F43A82587254Bdcec", note:"Audit-fixed (active)" },
+  { label:"V3", version:"V3", address:"0x80cBa50Fe0Efe7Fd98CbDe0a290A6651fAD0bDAF", note:"EIP-1167 clones — V-01 bug" },
+  { label:"V2", version:"V2", address:"0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4", note:"Legacy — V-01 bug" },
 ];
 const DEFAULT_MANAGER = KNOWN_CONTRACTS[0].address;
 

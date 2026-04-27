@@ -212,9 +212,11 @@ MIT — see [LICENSE](LICENSE).
 
 | Contract | Address | Notes |
 |---|---|---|
-| XenMintManagerV3 | [`0x80cBa50F...`](https://scan.pulsechain.com/address/0x80cBa50Fe0Efe7Fd98CbDe0a290A6651fAD0bDAF) | Active — EIP-1167 clones |
-| XenProxyV3 (implementation) | [`0x1E55318B...`](https://scan.pulsechain.com/address/0x1E55318B00aAFCA3149aCFB955d0679236cA7047) | Shared logic for V3 clones |
-| XenMintManagerV2 | [`0x8F3b672F...`](https://scan.pulsechain.com/address/0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4#code) ✅ | Legacy — full proxy deploys |
+| XenMintManagerV4 | [`0x8BfFebfF...`](https://scan.pulsechain.com/address/0x8BfFebfFf72b6F45D7eAa79F43A82587254Bdcec) | **Active** — audit-fixed, EIP-1167 clones |
+| XenProxyV4 (implementation) | [`0xDA36b900...`](https://scan.pulsechain.com/address/0xDA36b90038A1918179d96044b88A602C46E2442f) | Shared logic for V4 clones (locked at deploy) |
+| XenMintManagerV3 | [`0x80cBa50F...`](https://scan.pulsechain.com/address/0x80cBa50Fe0Efe7Fd98CbDe0a290A6651fAD0bDAF) | Legacy — pre-audit, has V-01 fund-trapping bug |
+| XenProxyV3 (implementation) | [`0x1E55318B...`](https://scan.pulsechain.com/address/0x1E55318B00aAFCA3149aCFB955d0679236cA7047) | V3 clones implementation |
+| XenMintManagerV2 | [`0x8F3b672F...`](https://scan.pulsechain.com/address/0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4#code) ✅ | Legacy — full proxy deploys, has V-01 bug |
 | IdentityRegistry (ERC-8004) | [`0xE13c8700...`](https://scan.pulsechain.com/address/0xE13c8700ab99b31D9BCC219FDC345f896Dc4a1ac#code) ✅ | |
 | ReputationRegistry (ERC-8004) | [`0xc1fb4138...`](https://scan.pulsechain.com/address/0xc1fb41388AEf24c0793A03e9Dc1aC2dD92745BdF#code) ✅ | |
 | ValidationRegistry (ERC-8004) | [`0xdaE9EC7E...`](https://scan.pulsechain.com/address/0xdaE9EC7E9Fb715047643e1cc9544CC052337203C#code) ✅ | |
