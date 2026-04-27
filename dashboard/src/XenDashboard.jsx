@@ -19,6 +19,18 @@ const PULSE_NETWORK = {
 const GRACE_DAYS    = 7;  // XEN grace period before rewards drop
 const PROXY_BATCH   = 20; // load proxies in batches of 20
 
+// ── Known XenMintManager deployments ─────────────────────────
+// Listed in dashboard quick-switch UI. V3 is the active default.
+const KNOWN_CONTRACTS = [
+  { label:"V3", version:"V3", address:"0x80cBa50Fe0Efe7Fd98CbDe0a290A6651fAD0bDAF", note:"EIP-1167 clones (active)" },
+  { label:"V2", version:"V2", address:"0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4", note:"Legacy full proxies" },
+];
+const DEFAULT_MANAGER = KNOWN_CONTRACTS[0].address;
+
+// Relayer wallet — used by the gas-tracking scan so its tx history
+// shows up in "Spent (gas)" alongside the connected owner wallet.
+const RELAYER_WALLET = "0x02F31836423Eba5f6bD52B8d7dD4488E1De0355e";
+
 // ── Colors ────────────────────────────────────────────────────
 const C = { cyan:"#00f5ff", pink:"#ff2d78", green:"#00ff88", amber:"#ffb800", purple:"#a855f7" };
 const statusColor = s => ({ READY:C.green, SOON:C.amber, MINTING:C.cyan }[s]||"#666");
@@ -42,7 +54,9 @@ const SELS  = {
   "delegateToRelayer(address,uint256)":              "5f0f0030",
   // XENFT
   "bulkClaimRank(uint256,uint256)":                  "ecef9201",
-  "bulkClaimMintReward(uint256)":                    "40fd0b75",
+  // OG XENT and pXENT both use the 2-arg version on PulseChain.
+  // Selector verified against on-chain tx 0x921edb5e1358e5...
+  "bulkClaimMintReward(uint256,address)":            "f5878b9b",
   "tokenOfOwnerByIndex(address,uint256)":            "2f745c59",
   "ownerOf(uint256)":                                "6352211e",
   "vmuCount(uint256)":                               "a1a53fa1",
@@ -237,7 +251,9 @@ function ProxyRow({proxy}){
       </div>
       <Badge status={proxy.status}/>
       <div style={{textAlign:"right"}}>
-        <div style={{fontSize:9,color:`${C.amber}cc`}}>~{fmtN(proxy.estimatedXen)}</div>
+        <div style={{fontSize:9,color:`${C.amber}cc`}}>
+          {proxy.estimatedXen==null?"—":`~${fmtN(proxy.estimatedXen)}`}
+        </div>
         <div style={{fontSize:8,color:"rgba(255,255,255,0.2)"}}>{proxy.maturityDate}</div>
       </div>
     </div>
@@ -272,7 +288,7 @@ export default function XenDashboard(){
   const [managerAddr, setManagerAddr]= useState("");
   const [inputAddr,   setInputAddr]  = useState("");
 
-  // Auto-load saved contract address
+  // Auto-load saved contract address (or fall back to V3 default)
   useEffect(()=>{
     try{
       const saved = localStorage.getItem("xen_manager_addr");
@@ -280,11 +296,27 @@ export default function XenDashboard(){
         setManagerAddr(saved);
         setInputAddr(saved);
       } else {
-        // Use default contract
-        setManagerAddr(inputAddr);
+        setManagerAddr(DEFAULT_MANAGER);
+        setInputAddr(DEFAULT_MANAGER);
       }
-    }catch{}
+    }catch{
+      setManagerAddr(DEFAULT_MANAGER);
+      setInputAddr(DEFAULT_MANAGER);
+    }
   },[]);
+
+  // One-click switcher: persist choice and reset cached state.
+  // Plain function (not useCallback) — showToast is recreated each render.
+  const switchManager = (addr)=>{
+    setManagerAddr(addr);
+    setInputAddr(addr);
+    setCd(null);
+    setProxies([]);
+    setAllProxiesLoaded(false);
+    try{ localStorage.setItem("xen_manager_addr",addr); }catch{}
+    const known = KNOWN_CONTRACTS.find(k=>k.address.toLowerCase()===addr.toLowerCase());
+    showToast(`Switched to ${known?known.label:short(addr)}`,C.cyan);
+  };
   const [demoMode,    setDemoMode]   = useState(false);
 
   // Contract data
@@ -489,7 +521,7 @@ export default function XenDashboard(){
         }
 
         // Read VMU count and mint info with retry
-        let vmus="?", term="?", maturityTs=0, daysLeft=0, matured=false, maturityDate="—";
+        let vmus="?", term="?", maturityTs=0, daysLeft=0, matured=false, maturityDate="—", redeemed=false;
 
         // vmuCount with retry
         for(let attempt=0; attempt<3; attempt++){
@@ -519,7 +551,11 @@ export default function XenDashboard(){
               maturityTs=mintTsBits+termBits*86400;
               const now=Math.floor(Date.now()/1000);
               daysLeft=Math.ceil((maturityTs-now)/86400);
-              matured=daysLeft<=0;
+              // OG XENFT mintInfo's low byte is the redeemed flag.
+              // "matured" repurposed to mean "claimable" — matches xen.network
+              // behavior of showing Claim XEN for any unredeemed token.
+              redeemed=(info & 0xFFn) === 1n;
+              matured=!redeemed;
               maturityDate=maturityTs>0?new Date(maturityTs*1000).toLocaleDateString():"—";
               break;
             }
@@ -528,7 +564,7 @@ export default function XenDashboard(){
         }
 
         // Debug log for first 3 tokens
-        if(idx<3) addLog(`#${tokenId}: vmus=${vmus} term=${term} maturity=${maturityTs}`,"info");
+        if(idx<3) addLog(`#${tokenId}: vmus=${vmus} term=${term} maturity=${maturityTs} redeemed=${redeemed}`,"info");
 
         // Ghost filter
         if(maturityTs===0){skipped++;continue;}
@@ -539,9 +575,11 @@ export default function XenDashboard(){
 
         tokens.push({
           tokenId:String(tokenId),vmus,term,
-          daysLeft:Math.max(0,daysLeft),matured,maturityDate,maturityTs,
+          daysLeft:Math.max(0,daysLeft),matured,redeemed,maturityDate,maturityTs,
           graceExpiry:new Date((maturityTs+7*86400)*1000),
-          estXen:typeof vmus==="number"?vmus*1200*(typeof term==="number"?term:1):0,
+          // Real XEN reward depends on cRank, AMP, EAA and a log function.
+          // Refusing to invent a number. Source of truth: og.xen.network.
+          estXen:null,
         });
 
         // Small delay between tokens to avoid rate limits
@@ -660,7 +698,7 @@ export default function XenDashboard(){
 
   // ── Claim XENFT rewards ──────────────────────────────────────
   const handleClaimXENFT=async(tokenId)=>{
-    let data="0x"+sel("bulkClaimMintReward(uint256)")+pad32(tokenId);
+    let data="0x"+sel("bulkClaimMintReward(uint256,address)")+pad32(tokenId)+pad32(account);
     setTxPending(`Claiming XENFT #${tokenId}`);
     addLog(`Claiming XENFT #${tokenId}...`,"pending");
     try{
@@ -760,7 +798,7 @@ export default function XenDashboard(){
           }
         }catch{skipped++;continue;}
 
-        let vmus="?", term="?", maturityTs=0, daysLeft=0, matured=false, maturityDate="—";
+        let vmus="?", term="?", maturityTs=0, daysLeft=0, matured=false, maturityDate="—", redeemed=false;
         for(let attempt=0; attempt<3; attempt++){
           try{
             const vmuRes=await fetch(PULSE_RPC,{method:"POST",headers:{"Content-Type":"application/json"},
@@ -787,7 +825,9 @@ export default function XenDashboard(){
               maturityTs=mintTsBits+termBits*86400;
               const now=Math.floor(Date.now()/1000);
               daysLeft=Math.ceil((maturityTs-now)/86400);
-              matured=daysLeft<=0;
+              redeemed=(info & 0xFFn) === 1n;
+              // Same xen.network parity: claimable = unredeemed.
+              matured=!redeemed;
               maturityDate=maturityTs>0?new Date(maturityTs*1000).toLocaleDateString():"—";
               break;
             }
@@ -795,7 +835,7 @@ export default function XenDashboard(){
           if(attempt<2)await new Promise(r=>setTimeout(r,200));
         }
 
-        if(idx<3) addLog(`[pXENT] #${tokenId}: vmus=${vmus} term=${term} maturity=${maturityTs}`,"info");
+        if(idx<3) addLog(`[pXENT] #${tokenId}: vmus=${vmus} term=${term} maturity=${maturityTs} redeemed=${redeemed}`,"info");
 
         if(maturityTs===0){skipped++;continue;}
         if(vmus==="?"||vmus===0){skipped++;continue;}
@@ -805,9 +845,9 @@ export default function XenDashboard(){
 
         tokens.push({
           tokenId:String(tokenId), vmus, term,
-          daysLeft:Math.max(0,daysLeft), matured, maturityDate, maturityTs,
+          daysLeft:Math.max(0,daysLeft), matured, redeemed, maturityDate, maturityTs,
           graceExpiry:new Date((maturityTs+7*86400)*1000),
-          estXen:typeof vmus==="number"?vmus*1200*(typeof term==="number"?term:1):0,
+          estXen:null, // see comment in OG XENT loader
         });
 
         if(idx<idsArray.length-1) await new Promise(r=>setTimeout(r,50));
@@ -905,7 +945,7 @@ export default function XenDashboard(){
   };
 
   const handleClaimNative=async(tokenId)=>{
-    const data="0x"+sel("bulkClaimMintReward(uint256)")+pad32(tokenId);
+    const data="0x"+sel("bulkClaimMintReward(uint256,address)")+pad32(tokenId)+pad32(account);
     setTxPending(`Claiming Native XENFT #${tokenId}`);
     addLog(`[Native] Claiming pXENT #${tokenId}...`,"pending");
     try{
@@ -944,7 +984,7 @@ export default function XenDashboard(){
     for(let i=0;i<matured.length;i++){
       const nft=matured[i];
       try{
-        const data="0x"+sel("bulkClaimMintReward(uint256)")+pad32(nft.tokenId);
+        const data="0x"+sel("bulkClaimMintReward(uint256,address)")+pad32(nft.tokenId)+pad32(account);
         setTxPending(`Claim All XENT: ${i+1}/${matured.length} (#${nft.tokenId})`);
         addLog(`[XENT] Claiming #${nft.tokenId} (${i+1}/${matured.length})...`,"pending");
         const hash=await window.ethereum.request({method:"eth_sendTransaction",
@@ -987,7 +1027,7 @@ export default function XenDashboard(){
     for(let i=0;i<matured.length;i++){
       const nft=matured[i];
       try{
-        const data="0x"+sel("bulkClaimMintReward(uint256)")+pad32(nft.tokenId);
+        const data="0x"+sel("bulkClaimMintReward(uint256,address)")+pad32(nft.tokenId)+pad32(account);
         setTxPending(`Claim All pXENT: ${i+1}/${matured.length} (#${nft.tokenId})`);
         addLog(`[pXENT] Claiming #${nft.tokenId} (${i+1}/${matured.length})...`,"pending");
         const hash=await window.ethereum.request({method:"eth_sendTransaction",
@@ -1130,13 +1170,15 @@ export default function XenDashboard(){
 
       // ── Fetch gas spent on all XEN-related transactions ─────
       try{
-        // Hardcoded wallet addresses to aggregate (owner + relayer)
-        const OWNER_ADDR="";
-        const RELAYER_ADDR="";
+        // Aggregate gas across the connected owner wallet and the relayer.
         const walletsToScan=[
-          OWNER_ADDR.toLowerCase(),
-          RELAYER_ADDR.toLowerCase(),
+          account.toLowerCase(),
+          RELAYER_WALLET.toLowerCase(),
         ];
+        // All known managers (V2 + V3 + future). Stable across UI contract switches.
+        const knownManagers = new Set(KNOWN_CONTRACTS.map(k=>k.address.toLowerCase()));
+        const xentAddr  = XENFT_ADDRESS.toLowerCase();
+        const pxentAddr = NATIVE_XENFT.toLowerCase();
 
         let totalGasWei=0n;
         let totalWastedWei=0n;
@@ -1144,12 +1186,14 @@ export default function XenDashboard(){
         const breakdown={
           proxyMint:0n, proxyClaim:0n,
           xentMint:0n, xentClaim:0n,
-          pxentMint:0n, pxentClaim:0n, other:0n,
+          pxentMint:0n, pxentClaim:0n,
+          deploys:0n, other:0n,
         };
         const txCounts={
           proxyMint:0, proxyClaim:0,
           xentMint:0, xentClaim:0,
-          pxentMint:0, pxentClaim:0, other:0,
+          pxentMint:0, pxentClaim:0,
+          deploys:0, other:0,
         };
 
         for(const walletAddr of walletsToScan){
@@ -1159,26 +1203,28 @@ export default function XenDashboard(){
           if(!txJson.items)continue;
 
           for(const tx of txJson.items){
-            const to=tx.to?.hash?.toLowerCase();
-            if(!to)continue;
-
             const gasUsed=BigInt(tx.gas_used||0);
             const gasPrice=BigInt(tx.gas_price||0);
             const fee=gasUsed*gasPrice;
 
-            // Track reverts separately (they still cost gas!)
+            // Reverts (still cost gas)
             if(tx.status!=="ok"){
               totalWastedWei+=fee;
               revertedCount++;
               continue;
             }
 
-            const input=(tx.raw_input||"").toLowerCase();
-            const mgrAddr=managerAddr.toLowerCase();
-            const xentAddr=XENFT_ADDRESS.toLowerCase();
-            const pxentAddr=NATIVE_XENFT.toLowerCase();
+            const to=tx.to?.hash?.toLowerCase();
+            // Contract creation tx (no `to` field) — counts toward deploys
+            if(!to){
+              breakdown.deploys+=fee; txCounts.deploys++;
+              totalGasWei+=fee;
+              continue;
+            }
 
-            if(to===mgrAddr){
+            const input=(tx.raw_input||"").toLowerCase();
+
+            if(knownManagers.has(to)){
               if(input.startsWith("0xbb739814")){
                 breakdown.proxyMint+=fee; txCounts.proxyMint++;
               }else if(input.startsWith("0x50416b93")||input.startsWith("0x05e98d64")){
@@ -1220,6 +1266,8 @@ export default function XenDashboard(){
           xentClaim:  {pls: toPls(breakdown.xentClaim),  count: txCounts.xentClaim},
           pxentMint:  {pls: toPls(breakdown.pxentMint),  count: txCounts.pxentMint},
           pxentClaim: {pls: toPls(breakdown.pxentClaim), count: txCounts.pxentClaim},
+          deploys:    {pls: toPls(breakdown.deploys),    count: txCounts.deploys},
+          other:      {pls: toPls(breakdown.other),      count: txCounts.other},
         });
       }catch(err){console.warn("Gas tracker error:",err);}
 
@@ -1244,7 +1292,8 @@ export default function XenDashboard(){
         rows.push({id:i+j,daysLeft,matured:ts<=now&&ts>0,maturityTs:ts,
           maturityDate:ts>0?new Date(ts*1000).toLocaleDateString():"—",
           graceExpiry:new Date((ts+GRACE_DAYS*86400)*1000),
-          estimatedXen:Math.floor(Math.random()*30000+5000),
+          // Unknown until we can read rank/amp from XEN — no fake numbers.
+          estimatedXen:null,
           status:ts<=now&&ts>0?"READY":daysLeft<10?"SOON":"MINTING"});
       });
       setProxies([...rows]); // live update as batches load
@@ -1266,16 +1315,36 @@ export default function XenDashboard(){
     }
     setTxPending(label);
     try{
+      // Measure owner's pXEN balance before so we can derive real earned amount.
+      const pxen = "0x8a7FDcA264e87b6da72D000f22186B4403081A2a"; // XEN (pXEN on PulseChain)
+      let balBefore = 0n;
+      try {
+        const h = await ethCall(pxen, "balanceOf(address)", [account]);
+        balBefore = BigInt(h || "0x0");
+      } catch {}
+
       const hash=await window.ethereum.request({method:"eth_sendTransaction",
         params:[{from:account,to:managerAddr,data,gas:"0x7A1200"}]});
       showToast(`⏳ ${label} → ${short(hash)}`);
-      const earned=Math.floor(Math.random()*100000+50000); // estimate
-      setClaimHistory(h=>[{id:Date.now(),time:"just now",hash:short(hash),label,earned,gas:gasPls},...h.slice(0,19)]);
-      setAnalytics(a=>({
-        ...a, claimCount:a.claimCount+1, totalEarned:a.totalEarned+earned, totalGasPls:+(a.totalGasPls+gasPls).toFixed(4),
-        chartData:[...a.chartData,{day:new Date().toLocaleDateString(),xen:earned,gas:gasPls}].slice(-30),
-      }));
-      setTimeout(()=>{loadData();setTxPending(null);},6000);
+
+      // After ~6s (give the tx time to mine), read the new balance and compute delta.
+      setTimeout(async ()=>{
+        let earned = 0;
+        try {
+          const h = await ethCall(pxen, "balanceOf(address)", [account]);
+          const balAfter = BigInt(h || "0x0");
+          // pXEN has 18 decimals. Floor to integer XEN for display.
+          const delta = balAfter > balBefore ? balAfter - balBefore : 0n;
+          earned = Number(delta / 10n**18n);
+        } catch {}
+        setClaimHistory(h=>[{id:Date.now(),time:"just now",hash:short(hash),label,earned,gas:gasPls},...h.slice(0,19)]);
+        setAnalytics(a=>({
+          ...a, claimCount:a.claimCount+1, totalEarned:a.totalEarned+earned, totalGasPls:+(a.totalGasPls+gasPls).toFixed(4),
+          chartData:[...a.chartData,{day:new Date().toLocaleDateString(),xen:earned,gas:gasPls}].slice(-30),
+        }));
+        loadData();
+        setTxPending(null);
+      },6000);
       return hash;
     }catch(e){
       setTxPending(null);
@@ -1308,39 +1377,85 @@ export default function XenDashboard(){
     }
 
     setMinting(true);
-    let deployed=0;
-    let success=0;
     try{
-      const totalBatches=Math.ceil(mintCount/MINT_BATCH);
-      showToast(`Starting ${mintCount} wallets in ${totalBatches} transactions...`,C.cyan);
+      // Build calldata for every batch up front so EIP-5792 can submit them as one wallet call
+      const calls=[];
+      let queued=0;
+      while(queued<mintCount){
+        const batch=Math.min(MINT_BATCH, mintCount-queued);
+        const data="0x"+sel("batchClaimRank(uint256,uint256)")+pad32(batch)+pad32(mintTerm);
+        calls.push({to:managerAddr, data, count:batch});
+        queued+=batch;
+      }
 
-      while(deployed<mintCount){
-        const batch=Math.min(MINT_BATCH, mintCount-deployed);
-        setTxPending(`Minting ${deployed+batch}/${mintCount} wallets`);
+      showToast(`Starting ${mintCount} wallets in ${calls.length} ${calls.length===1?"transaction":"transactions"}...`,C.cyan);
 
-        // Build tx data manually so we control gas limit precisely
-        let data="0x"+sel("batchClaimRank(uint256,uint256)")+pad32(batch)+pad32(mintTerm);
+      // EIP-5792: probe wallet capability, then submit all batches in one popup if supported
+      const PULSE_HEX="0x171";
+      let usedBatched=false;
+      let caps=null;
+      try{
+        caps=await window.ethereum.request({method:"wallet_getCapabilities",params:[account,[PULSE_HEX]]});
+      }catch{ caps=null; }
+      const chainCaps=caps?.[PULSE_HEX]||{};
+      const supports5792 = chainCaps.atomic?.status==="supported"
+                        || chainCaps.atomic?.status==="ready"
+                        || chainCaps.atomicBatch?.supported===true;
+
+      if(supports5792 && calls.length>1){
         try{
-          const hash=await window.ethereum.request({method:"eth_sendTransaction",
-            params:[{from:account,to:managerAddr,data,gas:"0x7A1200"}]});
-          // Wait for confirmation before next batch
-          await new Promise(r=>setTimeout(r,4000));
-          deployed+=batch;
-          success+=batch;
-          showToast(`✓ ${deployed}/${mintCount} wallets deployed`,C.green);
+          setTxPending(`Submitting ${calls.length} batches as one EIP-5792 call`);
+          addLog(`EIP-5792 supported — sending ${calls.length} batches as one wallet call`,"info");
+          const result=await window.ethereum.request({
+            method:"wallet_sendCalls",
+            params:[{
+              version:"2.0.0",
+              from:account,
+              chainId:PULSE_HEX,
+              atomicRequired:false,
+              calls:calls.map(c=>({to:c.to, data:c.data})),
+            }],
+          });
+          const id=typeof result==="string"?result:result?.id;
+          usedBatched=true;
+          setMintModal(false);
+          setTxPending(null);
+          showToast(`✓ ${mintCount} wallets queued via EIP-5792 (${short(String(id||""))})`,C.green);
+          addLog(`EIP-5792 batch submitted — id ${id||"?"}`,"success");
+          pushNotif("XEN Minting Started",`${mintCount} wallets minting for ${mintTerm} days`);
+          setTimeout(()=>loadData(),10000);
         }catch(e){
-          if(e.code===4001){showToast("Cancelled",C.amber);break;}
-          showToast(`Batch failed: ${e.message}`,C.pink);
-          break;
+          if(e.code===4001){showToast("Cancelled",C.amber);return;}
+          // 5792 was advertised but failed — fall through to legacy loop
+          addLog(`EIP-5792 send failed, falling back to per-batch: ${e.message||"unknown"}`,"warning");
         }
       }
 
-      setTxPending(null);
-      if(success>0){
-        setMintModal(false);
-        showToast(`✓ ${success} wallets now minting pXEN for ${mintTerm} days!`,C.green);
-        pushNotif("XEN Minting Started",`${success} wallets minting for ${mintTerm} days`);
-        setTimeout(()=>loadData(),6000);
+      if(!usedBatched){
+        let deployed=0;
+        let success=0;
+        for(const c of calls){
+          setTxPending(`Minting ${deployed+c.count}/${mintCount} wallets`);
+          try{
+            const hash=await window.ethereum.request({method:"eth_sendTransaction",
+              params:[{from:account,to:managerAddr,data:c.data,gas:"0x7A1200"}]});
+            await new Promise(r=>setTimeout(r,4000));
+            deployed+=c.count;
+            success+=c.count;
+            showToast(`✓ ${deployed}/${mintCount} wallets deployed`,C.green);
+          }catch(e){
+            if(e.code===4001){showToast("Cancelled",C.amber);break;}
+            showToast(`Batch failed: ${e.message}`,C.pink);
+            break;
+          }
+        }
+        setTxPending(null);
+        if(success>0){
+          setMintModal(false);
+          showToast(`✓ ${success} wallets now minting pXEN for ${mintTerm} days!`,C.green);
+          pushNotif("XEN Minting Started",`${success} wallets minting for ${mintTerm} days`);
+          setTimeout(()=>loadData(),6000);
+        }
       }
     }finally{setMinting(false);setTxPending(null);}
   };
@@ -1501,14 +1616,20 @@ export default function XenDashboard(){
         {account&&!managerAddr&&!demoMode&&(
           <div className="fade-up">
             <GlowCard color={C.cyan} style={{padding:24,marginBottom:12}}>
-              <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:18,color:C.cyan,marginBottom:6}}>Enter Contract Address</div>
-              <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:14}}>Paste your XenMintManagerV2 address on PulseChain.</div>
-              <input value={inputAddr} onChange={e=>setInputAddr(e.target.value)} placeholder="0x..."
+              <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:18,color:C.cyan,marginBottom:6}}>Choose Contract</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:14}}>Pick a known deployment or paste a custom XenMintManager address.</div>
+              <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                {KNOWN_CONTRACTS.map(k=>(
+                  <NeonBtn key={k.address} color={C.cyan} onClick={()=>switchManager(k.address)}>
+                    {k.label} — {k.note}
+                  </NeonBtn>
+                ))}
+              </div>
+              <input value={inputAddr} onChange={e=>setInputAddr(e.target.value)} placeholder="0x... (custom address)"
                 style={{width:"100%",padding:"10px 12px",background:"rgba(0,245,255,0.05)",border:`1px solid ${C.cyan}33`,color:"#fff",fontSize:12,fontFamily:"inherit",outline:"none",marginBottom:10,letterSpacing:"0.04em"}}/>
               <NeonBtn color={C.cyan} onClick={()=>{
                 if(inputAddr.startsWith("0x")&&inputAddr.length===42){
-                  setManagerAddr(inputAddr);
-                  try{localStorage.setItem("xen_manager_addr",inputAddr);}catch{}
+                  switchManager(inputAddr);
                 }else showToast("Invalid address",C.pink);
               }} full>Load Contract →</NeonBtn>
             </GlowCard>
@@ -1700,13 +1821,15 @@ export default function XenDashboard(){
                     <div style={{borderTop:`1px solid ${C.amber}22`,paddingTop:12}}>
                       <div style={{fontSize:8,letterSpacing:"0.18em",color:`${C.amber}55`,marginBottom:10}}>BREAKDOWN</div>
                       {[
-                        {k:"Proxy mints",  val:gasBreakdown.proxyMint,  c:C.cyan,    icon:"⬡"},
-                        {k:"Proxy claims", val:gasBreakdown.proxyClaim, c:C.green,   icon:"⛏"},
-                        {k:"XENT mints",   val:gasBreakdown.xentMint,   c:C.purple,  icon:"🖼"},
-                        {k:"XENT claims",  val:gasBreakdown.xentClaim,  c:C.green,   icon:"⛏"},
-                        {k:"pXENT mints",  val:gasBreakdown.pxentMint,  c:C.pink,    icon:"🌱"},
-                        {k:"pXENT claims", val:gasBreakdown.pxentClaim, c:C.green,   icon:"⛏"},
-                      ].filter(r=>r.val.count>0).map(r=>(
+                        {k:"Proxy mints",      val:gasBreakdown.proxyMint,  c:C.cyan,                       icon:"⬡"},
+                        {k:"Proxy claims",     val:gasBreakdown.proxyClaim, c:C.green,                      icon:"⛏"},
+                        {k:"XENT mints",       val:gasBreakdown.xentMint,   c:C.purple,                     icon:"🖼"},
+                        {k:"XENT claims",      val:gasBreakdown.xentClaim,  c:C.green,                      icon:"⛏"},
+                        {k:"pXENT mints",      val:gasBreakdown.pxentMint,  c:C.pink,                       icon:"🌱"},
+                        {k:"pXENT claims",     val:gasBreakdown.pxentClaim, c:C.green,                      icon:"⛏"},
+                        {k:"Contract deploys", val:gasBreakdown.deploys,    c:C.amber,                      icon:"📦"},
+                        {k:"Setup / config",   val:gasBreakdown.other,      c:"rgba(255,255,255,0.5)",      icon:"⚙"},
+                      ].filter(r=>r.val&&r.val.count>0).map(r=>(
                         <div key={r.k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,fontSize:11}}>
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <span style={{fontSize:12}}>{r.icon}</span>
@@ -1837,7 +1960,17 @@ export default function XenDashboard(){
                     <span>#</span><span>PROGRESS / GRACE TIMER</span><span>STATUS</span><span style={{textAlign:"right"}}>EST XEN</span>
                   </div>
                   <div style={{maxHeight:500,overflowY:"auto"}}>
-                    {filtered.length===0&&<div style={{padding:24,textAlign:"center",fontSize:11,color:"rgba(255,255,255,0.2)"}}>Loading proxies...</div>}
+                    {filtered.length===0&&(
+                      <div style={{padding:24,textAlign:"center",fontSize:11,color:"rgba(255,255,255,0.2)"}}>
+                        {loadingProxies
+                          ? `Loading proxies... ${proxies.length}/${cd?.totalProxies||"?"}`
+                          : !allProxiesLoaded
+                              ? "Waiting for on-chain data..."
+                              : proxies.length===0
+                                  ? "No proxies in this manager yet."
+                                  : `No proxies match filter "${filter}".`}
+                      </div>
+                    )}
                     {filtered.map(p=><ProxyRow key={p.id} proxy={p}/>)}
                   </div>
                 </GlowCard>
@@ -1856,11 +1989,14 @@ export default function XenDashboard(){
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     <NeonBtn color={C.cyan} onClick={demoMode?()=>{}:loadXENFTs} disabled={xenftLoading} small>↻ Refresh</NeonBtn>
                     <NeonBtn color={C.amber} onClick={()=>window.open("https://og.xen.network/pulse-chain-og/xenft/torrent","_blank")} small>🔗 og.xen.network</NeonBtn>
-                    {xenfts.filter(x=>x.matured).length>0&&(
-                      <NeonBtn color={C.green} onClick={handleClaimAllXents} disabled={!!txPending}>
-                        ⛏ Claim All ({xenfts.filter(x=>x.matured).length})
-                      </NeonBtn>
-                    )}
+                    {(() => {
+                      const claimable = xenfts.filter(x => !x.redeemed);
+                      return (
+                        <NeonBtn color={C.green} onClick={handleClaimAllXents} disabled={!!txPending || claimable.length === 0}>
+                          ⛏ Claim XEN ({claimable.length})
+                        </NeonBtn>
+                      );
+                    })()}
                     <NeonBtn color={C.purple} onClick={()=>setXenftModal(true)}>🖼 Mint XENFTs</NeonBtn>
                   </div>
                 </div>
@@ -1927,27 +2063,36 @@ export default function XenDashboard(){
                   </GlowCard>
                 )}
 
-                {/* XENFT cards */}
+                {/* XENFT cards
+                    Three states:
+                      - REDEEMED: already claimed (gray, no actions)
+                      - READY: not redeemed AND past chain maturity (green, claim + grace timer)
+                      - MATURING: not redeemed AND pre-maturity (cyan, claim still allowed [contract is lenient near maturity], countdown timer) */}
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
                   {(demoMode?DEMO_XENFTS:xenfts).map(nft=>{
+                    const nowSec=Math.floor(Date.now()/1000);
+                    const trulyMatured=nft.maturityTs>0&&nowSec>=nft.maturityTs;
+                    const isRedeemed=!!nft.redeemed;
+                    const state=isRedeemed?"REDEEMED":trulyMatured?"READY":"MATURING";
+                    const stateColor={REDEEMED:"rgba(255,255,255,0.35)",READY:C.green,MATURING:C.cyan}[state];
                     const graceSecsLeft=(nft.graceExpiry-Date.now())/1000;
-                    const urgent=nft.matured&&graceSecsLeft<86400*2;
+                    const graceUrgent=state==="READY"&&graceSecsLeft<86400*2;
                     return(
-                      <GlowCard key={nft.tokenId} color={nft.matured?C.green:C.purple} style={{padding:"16px 16px"}}>
+                      <GlowCard key={nft.tokenId} color={stateColor} style={{padding:"16px 16px",opacity:isRedeemed?0.55:1}}>
                         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
                           <div style={{flex:1}}>
                             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                              <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:18,fontWeight:700,color:nft.matured?C.green:C.purple}}>XENFT #{nft.tokenId}</div>
-                              {nft.matured
-                                ?<span style={{fontSize:8,padding:"2px 7px",color:C.green,border:`1px solid ${C.green}44`,background:`${C.green}0e`}}>READY</span>
-                                :<span style={{fontSize:8,padding:"2px 7px",color:C.cyan,border:`1px solid ${C.cyan}44`,background:`${C.cyan}0e`}}>MINTING</span>}
+                              <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:18,fontWeight:700,color:stateColor}}>XENFT #{nft.tokenId}</div>
+                              <span style={{fontSize:8,padding:"2px 7px",color:stateColor,border:`1px solid ${stateColor}44`,background:`${stateColor}0e`}}>
+                                {state==="REDEEMED"?"✓ REDEEMED":state}
+                              </span>
                             </div>
                             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
                               {[
                                 {k:"VMUs",      v:nft.vmus||"?"},
                                 {k:"Term",      v:nft.term&&nft.term!=="?"?`${nft.term}d`:"—"},
                                 {k:"Matures On",v:nft.maturityDate||"—"},
-                                {k:"Est. pXEN", v:nft.estXen?fmtN(nft.estXen):"—"},
+                                {k:"Est. XEN",  v:nft.estXen?fmtN(nft.estXen):"—"},
                               ].map(r=>(
                                 <div key={r.k} style={{fontSize:10}}>
                                   <span style={{color:"rgba(255,255,255,0.28)"}}>{r.k}: </span>
@@ -1955,28 +2100,30 @@ export default function XenDashboard(){
                                 </div>
                               ))}
                             </div>
-                            {/* Live countdown timer */}
-                            {!nft.matured&&nft.maturityTs>0&&(
+                            {state==="MATURING"&&nft.maturityTs>0&&(
                               <div style={{marginTop:10,padding:"8px 12px",background:`${C.cyan}08`,border:`1px solid ${C.cyan}22`}}>
                                 <div style={{fontSize:8,letterSpacing:"0.15em",color:`${C.cyan}66`,marginBottom:4}}>TIME UNTIL MATURITY</div>
                                 <div style={{fontSize:14,fontFamily:"'Rajdhani',sans-serif",fontWeight:700}}>
                                   <Countdown targetDate={new Date(nft.maturityTs*1000)}/>
                                 </div>
+                                <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",marginTop:4}}>
+                                  Early claim works for OG XENFT — usually within ~12h of maturity.
+                                </div>
                               </div>
                             )}
-                            {nft.matured&&(
-                              <div style={{marginTop:8,fontSize:10,color:urgent?C.pink:C.amber}}>
-                                {urgent?"⚠ Grace expiring soon: ":"Grace period: "}
+                            {state==="READY"&&(
+                              <div style={{marginTop:8,fontSize:10,color:graceUrgent?C.pink:C.amber}}>
+                                {graceUrgent?"⚠ Grace expiring soon: ":"Grace period: "}
                                 <Countdown targetDate={nft.graceExpiry}/>
                               </div>
                             )}
                           </div>
                           <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                            {nft.matured&&(
-                              <NeonBtn color={C.green}
+                            {!isRedeemed&&(
+                              <NeonBtn color={state==="READY"?C.green:C.cyan}
                                 onClick={demoMode?()=>showToast("Demo mode",C.purple):()=>handleClaimXENFT(nft.tokenId)}
                                 disabled={!!txPending}>
-                                ⛏ Claim
+                                ⛏ Claim XEN
                               </NeonBtn>
                             )}
                             <NeonBtn color={C.purple} onClick={()=>window.open(`https://og.xen.network/pulse-chain-og/xenft/torrent`,"_blank")} small>
@@ -1984,10 +2131,10 @@ export default function XenDashboard(){
                             </NeonBtn>
                           </div>
                         </div>
-                        {!nft.matured&&nft.daysLeft>0&&(
+                        {state==="MATURING"&&nft.daysLeft>0&&(
                           <div style={{marginTop:10}}>
                             <div style={{height:2,background:"rgba(255,255,255,0.05)",borderRadius:1}}>
-                              <div style={{height:"100%",width:`${Math.max(2,((nft.term-nft.daysLeft)/Math.max(nft.term,1))*100)}%`,background:`linear-gradient(90deg,${C.purple}55,${C.purple})`,borderRadius:1}}/>
+                              <div style={{height:"100%",width:`${Math.max(2,((nft.term-nft.daysLeft)/Math.max(nft.term,1))*100)}%`,background:`linear-gradient(90deg,${C.cyan}55,${C.cyan})`,borderRadius:1}}/>
                             </div>
                           </div>
                         )}
@@ -2088,13 +2235,21 @@ export default function XenDashboard(){
                 )}
 
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {nativeXenfts.map(nft=>(
-                    <GlowCard key={nft.tokenId} color={nft.matured?C.green:C.pink} style={{padding:"16px 16px"}}>
+                  {nativeXenfts.map(nft=>{
+                    const nowSec=Math.floor(Date.now()/1000);
+                    const trulyMatured=nft.maturityTs>0&&nowSec>=nft.maturityTs;
+                    const isRedeemed=!!nft.redeemed;
+                    const state=isRedeemed?"REDEEMED":trulyMatured?"READY":"MATURING";
+                    const stateColor={REDEEMED:"rgba(255,255,255,0.35)",READY:C.green,MATURING:C.cyan}[state];
+                    return(
+                    <GlowCard key={nft.tokenId} color={stateColor} style={{padding:"16px 16px",opacity:isRedeemed?0.55:1}}>
                       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
                         <div style={{flex:1}}>
                           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                            <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:18,fontWeight:700,color:nft.matured?C.green:C.pink}}>pXENT #{nft.tokenId}</div>
-                            <span style={{fontSize:8,padding:"2px 7px",color:nft.matured?C.green:C.cyan,border:`1px solid ${nft.matured?C.green:C.cyan}44`,background:`${nft.matured?C.green:C.cyan}0e`}}>{nft.matured?"READY":"MINTING"}</span>
+                            <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:18,fontWeight:700,color:stateColor}}>pXENT #{nft.tokenId}</div>
+                            <span style={{fontSize:8,padding:"2px 7px",color:stateColor,border:`1px solid ${stateColor}44`,background:`${stateColor}0e`}}>
+                              {state==="REDEEMED"?"✓ REDEEMED":state}
+                            </span>
                           </div>
                           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
                             {[
@@ -2109,7 +2264,7 @@ export default function XenDashboard(){
                               </div>
                             ))}
                           </div>
-                          {!nft.matured&&nft.maturityTs>0&&(
+                          {state==="MATURING"&&nft.maturityTs>0&&(
                             <div style={{marginTop:10,padding:"8px 12px",background:`${C.cyan}08`,border:`1px solid ${C.cyan}22`}}>
                               <div style={{fontSize:8,letterSpacing:"0.15em",color:`${C.cyan}66`,marginBottom:4}}>TIME UNTIL MATURITY</div>
                               <div style={{fontSize:14,fontFamily:"'Rajdhani',sans-serif",fontWeight:700}}>
@@ -2119,9 +2274,9 @@ export default function XenDashboard(){
                           )}
                         </div>
                         <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                          {nft.matured&&(
+                          {state==="READY"&&(
                             <NeonBtn color={C.green} onClick={()=>handleClaimNative(nft.tokenId)} disabled={!!txPending}>
-                              ⛏ Claim
+                              ⛏ Claim pXEN
                             </NeonBtn>
                           )}
                           <NeonBtn color={C.pink} onClick={()=>window.open(`https://xen.network/pulse-chain/xenft/torrent`,"_blank")} small>
@@ -2130,7 +2285,8 @@ export default function XenDashboard(){
                         </div>
                       </div>
                     </GlowCard>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -2318,11 +2474,27 @@ export default function XenDashboard(){
                   ))}
                 </GlowCard>
 
+                {/* Quick contract switcher */}
+                <GlowCard color={C.cyan} style={{padding:"18px 16px"}}>
+                  <div style={{fontSize:9,letterSpacing:"0.18em",color:`${C.cyan}88`,marginBottom:10}}>QUICK SWITCH</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {KNOWN_CONTRACTS.map(k=>{
+                      const active = managerAddr.toLowerCase()===k.address.toLowerCase();
+                      return (
+                        <NeonBtn key={k.address} color={active?C.green:C.cyan}
+                          onClick={()=>!active&&switchManager(k.address)} full>
+                          {active?"● ":""}{k.label} — {short(k.address)}
+                        </NeonBtn>
+                      );
+                    })}
+                  </div>
+                </GlowCard>
+
                 {/* Danger zone */}
                 <GlowCard color={C.pink} style={{padding:"18px 16px"}}>
                   <div style={{fontSize:9,letterSpacing:"0.18em",color:`${C.pink}55`,marginBottom:14}}>DANGER ZONE</div>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    <NeonBtn color={C.amber} onClick={()=>{setManagerAddr("");setCd(null);setProxies([]);}} full>Switch Contract</NeonBtn>
+                    <NeonBtn color={C.amber} onClick={()=>{setManagerAddr("");setCd(null);setProxies([]);}} full>Custom Contract...</NeonBtn>
                     <NeonBtn color={C.pink}  onClick={()=>{setAccount(null);setManagerAddr("");setCd(null);stopAuto();setProxies([]);}} full>Disconnect Wallet</NeonBtn>
                   </div>
                 </GlowCard>
