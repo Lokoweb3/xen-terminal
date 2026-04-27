@@ -27,7 +27,7 @@ const PROXY_BATCH   = 20; // load proxies in batches of 20
 // traps any harvested pXEN inside the contract — keep them listed for
 // historical access but DO NOT mint on them.
 const KNOWN_CONTRACTS = [
-  { label:"V4", version:"V4", address:"0x__REPLACE_WITH_V4_ADDRESS__",          note:"Audit-fixed (active)" },
+  { label:"V4", version:"V4", address:"0x8BfFebfFf72b6F45D7eAa79F43A82587254Bdcec", note:"Audit-fixed (active)" },
   { label:"V3", version:"V3", address:"0x80cBa50Fe0Efe7Fd98CbDe0a290A6651fAD0bDAF", note:"EIP-1167 clones — V-01 bug" },
   { label:"V2", version:"V2", address:"0x8F3b672F0e223d105cE90e38665e7aD05e0bEEe4", note:"Legacy — V-01 bug" },
 ];
