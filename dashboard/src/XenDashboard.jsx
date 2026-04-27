@@ -1708,17 +1708,13 @@ export default function XenDashboard(){
                   // PLS balance is shown separately — it was your capital, not profit
                   const plsReserveUsd=parseFloat(plsBal)*plsPrice;
 
-                  // Projected Apr 21 harvest
-                  const projectedXen=995000;  // est XEN from 23 XENTs
-                  const projectedPxen=170000; // est pXEN from proxies + 4 pXENTs
-                  const projectedHarvest=(projectedXen*xenPrice)+(projectedPxen*pxenPrice);
-
-                  // Total earned projected
-                  const totalEarnedProjected=earnedNow+projectedHarvest;
-
-                  // P&L = earnings - cost (ignores unspent PLS)
-                  const pnl=totalEarnedProjected-costUsd;
+                  // P&L = realized earnings - gas spent. We no longer guess at
+                  // unrealized projections (the old hardcoded numbers were stale
+                  // and misleading). Pending matured proxies get their own card.
+                  const pnl=earnedNow-costUsd;
                   const pnlPct=costUsd>0?((pnl/costUsd)*100):0;
+                  const maturedNow=cd?.maturedCount||0;
+                  const maturingSoonCount=cd?.maturingSoon||0;
 
                   return (
                     <GlowCard color={pnl>=0?C.green:C.pink} style={{padding:"18px 18px",marginBottom:12}}>
@@ -1729,7 +1725,7 @@ export default function XenDashboard(){
                             {pnl>=0?"+":""}${pnl.toFixed(2)} <span style={{fontSize:14,opacity:0.7}}>USD</span>
                           </div>
                           <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:4}}>
-                            {pnl>=0?"+":""}{pnlPct.toFixed(1)}% projected ROI after Apr 21
+                            {pnl>=0?"+":""}{pnlPct.toFixed(1)}% realized ROI ({maturedNow} ready · {maturingSoonCount} maturing &lt; 3d)
                           </div>
                         </div>
                         <NeonBtn color={C.cyan} onClick={loadPrices} small>↻ Refresh</NeonBtn>
@@ -1756,11 +1752,11 @@ export default function XenDashboard(){
                           <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",marginTop:2}}>XEN + pXEN tokens</div>
                         </div>
 
-                        {/* Projected after Apr 21 */}
+                        {/* Pending claims — replaces the old hardcoded projection */}
                         <div>
-                          <div style={{fontSize:9,letterSpacing:"0.15em",color:"rgba(255,255,255,0.3)",marginBottom:6}}>PROJECTED</div>
-                          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:18,fontWeight:700,color:C.amber}}>${totalEarnedProjected.toFixed(2)}</div>
-                          <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",marginTop:2}}>After Apr 21 harvest</div>
+                          <div style={{fontSize:9,letterSpacing:"0.15em",color:"rgba(255,255,255,0.3)",marginBottom:6}}>PENDING CLAIMS</div>
+                          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:18,fontWeight:700,color:C.amber}}>{maturedNow}</div>
+                          <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",marginTop:2}}>matured · {maturingSoonCount} more &lt; 3d</div>
                         </div>
                       </div>
 
